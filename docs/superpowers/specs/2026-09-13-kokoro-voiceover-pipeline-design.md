@@ -54,7 +54,7 @@ overridable, blendable voice** option. Then re-voice and re-render Episode 1 at
 - Caching: each service's `generate_from_text` checks
   `self.get_cached_result(input_data, self.cache_dir)` internally; the cache key is
   the serialized `input_data` (`input_text` + `service` + `config`). `_wrap_generate_from_text`
-  appends the (possibly cached) entry to `media/voiceovers/voiceover_cache.json`.
+    appends the (possibly cached) entry to `media/voiceovers/cache.json`.
 
 ### The remote transcription backend (verified)
 
@@ -92,7 +92,8 @@ overridable, blendable voice** option. Then re-voice and re-render Episode 1 at
 1. **`parse_voice_spec(spec: str) -> list[tuple[str, float]]`**
    - Splits on `;` into per-voice pairs; each pair splits on `,` into
      `(name, weight?)`. A bare name means weight 1.0.
-   - If more than one voice, normalize weights so they sum to 1.0.
+   - Always normalize weights so they sum to 1.0 (a lone `af_michael,0.75` becomes
+     full-strength `af_michael`).
    - Raises `ValueError` on malformed input (empty, extra commas, non-numeric or
      non-positive weight, unknown delimiters).
    - Examples:
@@ -151,7 +152,9 @@ overridable, blendable voice** option. Then re-voice and re-render Episode 1 at
 
 ### Files changed
 
-- **`video/pyproject.toml`** — add `kokoro-onnx` (and let uv pin it in `uv.lock`).
+- **`video/pyproject.toml`** — add `kokoro-onnx`; slim `manim-voiceover[gtts,transcribe]`
+  → `manim-voiceover` (drops the now-unused GTTS and local `stable_whisper`/torch deps;
+  uv re-locks).
 - **`video/common/voice.py`** — rewrite as above.
 - **`video/common/__init__.py`** — unchanged (still re-exports `set_voice`).
 - **`video/render.py`** — new, thin, **optional** CLI wrapper.
