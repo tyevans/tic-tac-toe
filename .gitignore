@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Kokoro model download (regenerable, ~116 MB)
+video/model/
+
+# manim render artifacts + voiceover cache (regenerable)
+video/media/
