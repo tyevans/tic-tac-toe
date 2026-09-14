@@ -9,8 +9,17 @@ wheels/
 # Virtual environments
 .venv
 
+# Agent/tooling session scratch
+.claude/
+
 # Kokoro model download (regenerable, ~116 MB)
 video/model/
 
 # manim render artifacts + voiceover cache (regenerable)
 video/media/
+
+# Final episode renders (large binary outputs, regenerable)
+video/final/
+
+# Throwaway dev/verification scripts
+video/_scratch/
