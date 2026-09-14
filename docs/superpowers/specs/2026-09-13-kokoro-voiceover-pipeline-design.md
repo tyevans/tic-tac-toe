@@ -75,15 +75,21 @@ overridable, blendable voice** option. Then re-voice and re-render Episode 1 at
 
 ### The TTS backend (verified)
 
-- Package: `kokoro-onnx` (PyPI `kokoro-onnx`, `from kokoro import KPipeline`).
-- `uv pip install --dry-run kokoro-onnx` resolves cleanly to 11 packages:
-  `kokoro-onnx 0.6.1`, `onnxruntime 1.30.0`, `phonemizer 3.4.0`,
-  `espeakng-loader 0.2.4` (bundles the espeak shared lib — **no system install**),
-  plus numpy (already 2.5.3, satisfies `>=2.0.2`; manim 0.19.2 already runs on it).
+- Package: `kokoro-onnx` 0.6.1 (top-level module **`kokoro_onnx`**, class
+  **`kokoro_onnx.Kokoro`**). Resolves to `onnxruntime 1.30.0`, `phonemizer 3.4.0`,
+  `espeakng-loader 0.2.4` (bundles the espeak lib — **no system install**), numpy
+  (2.5.3; manim 0.19.2 already runs on it).
+- The model is **not bundled**: `Kokoro(model_path, voices_path)` loads explicit
+  files. Download once from the `model-files-v1.0` release into `video/model/`:
+  - `kokoro-v1.0.int8.onnx` (~92 MB, int8 — smaller/faster on CPU)
+  - `voices-v1.0.bin` (~28 MB, `np.load`-able; 54 voices, e.g. `af_heart`, `am_michael`)
+- API (verified on this machine):
+  - `Kokoro(model_path, voices_path)`
+  - `create(text, voice, speed=1.0, lang="en-us", ...) -> (audio: float32[1-D], 24000)`
+  - `voice` is either a **name string** (single voice) **or** a `float32` style
+    vector; `get_voice_style(name) -> float32 (510,1,256)`, `get_voices() -> list[str]`.
+    Blending = weighted sum of the per-voice style vectors.
 - No system `espeak-ng` needed. No numpy conflict.
-- `KPipeline(lang_code="a")` (American English). The `voice` param accepts a single
-  name **or** a list of `(name, weight)` tuples for blending. The Kokoro-82M v1.0
-  model (~320 MB) auto-downloads on first use (cached).
 
 ## Design
 
@@ -137,11 +143,12 @@ overridable, blendable voice** option. Then re-voice and re-render Episode 1 at
        int16 WAV to `Path(self.cache_dir)/audio_path`.
      - return `{"input_text": text, "input_data": input_data,
        "original_audio": audio_path}`
-   - **Kokoro pipeline singleton** (module-level, lazy): load
-     `KPipeline(lang_code="a")` once per render process; call it with
-     `voice=self.voice`, `speed=self.global_speed`; collect the yielded audio chunks
-     into one numpy array; write WAV via stdlib `wave` + numpy (no new audio dep).
-     Confirm the exact generator→chunk shape on first synth (implementation step 1).
+    - **Kokoro pipeline singleton** (module-level, lazy): build
+      `kokoro_onnx.Kokoro(model_path, voices_path)` once per render process (paths
+      default to `video/model/`, overridable via `KOKORO_MODEL`/`KOKORO_VOICES`).
+      Synthesize with `create(text, voice, speed)` — name string for a single voice,
+      weighted `get_voice_style` vectors for a blend — and write the returned `float32`
+      as a 24 kHz int16 mono WAV via stdlib `wave` (no new audio dep).
 
 4. **`set_voice(scene)`**
    - `spec = os.environ.get("VOICE") or DEFAULT_VOICE_SPEC`
@@ -158,6 +165,9 @@ overridable, blendable voice** option. Then re-voice and re-render Episode 1 at
 - **`video/common/voice.py`** — rewrite as above.
 - **`video/common/__init__.py`** — unchanged (still re-exports `set_voice`).
 - **`video/render.py`** — new, thin, **optional** CLI wrapper.
+- **`video/model/`** — downloaded Kokoro model + voices (int8 `.onnx` ~92 MB,
+  `voices-v1.0.bin` ~28 MB); **gitignored**.
+- **`.gitignore`** (repo root) — add `video/model/`.
 - **No scene file changes.**
 
 ### `video/render.py` (thin, optional)
@@ -190,8 +200,10 @@ render.py [-q {l|m|h}] [--voice SPEC] [--whisper-url URL] <file> <SceneName> [Sc
 
 ## Delivery plan
 
-1. `uv add kokoro-onnx`; run a one-line synth to confirm Kokoro runs on this laptop
-   (downloads the 82M model once) and to pin the exact generator→WAV shape.
+1. ~~`uv add kokoro-onnx`; one-line synth to pin the call shape.~~ **Done during the
+   design spike:** deps added + `[gtts,transcribe]` slimmed, `video/model/` (int8
+   `.onnx` + voices) downloaded, and a real 24 kHz synth + WAV write verified on this
+   laptop.
 2. Render the **proof scene `E1S1` at `-ql`** with 3 candidate voice specs → 3 short
    audition clips for the user to listen to.
 3. User picks the voice → set it as `DEFAULT_VOICE_SPEC`.
@@ -201,12 +213,12 @@ render.py [-q {l|m|h}] [--voice SPEC] [--whisper-url URL] <file> <SceneName> [Sc
 
 ## Risks / open items
 
-- **Model download** (~320 MB) on first Kokoro synth — one-time, cached.
+- **Model files** (~120 MB, int8) live in gitignored `video/model/`; a fresh checkout
+  must download them once (the plan's setup step). If missing, fail with the package's
+  own download hint rather than a cryptic ONNX error.
 - **Remote server availability** — if `192.168.1.14:8083` is down at render time,
   transcription fails. Fail loud (do not silently fall back to no word-timing);
   ensure the server is up before a batch render.
-- **Kokoro call shape** — `KPipeline` generator→WAV collection and the blend
-  parameter are confirmed conceptually; pin the exact call in implementation step 1.
 - **Default voice** is a placeholder until the audition (delivery step 2–3).
 - The harmless "SoX not found" warning persists (we keep speed=1.0, so it is not
   invoked).
